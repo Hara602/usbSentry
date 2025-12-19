@@ -50,8 +50,9 @@ func main() {
 			if dev.Action == "add" {
 				sysutil.Log.Info("✅ USB Connected",
 					zap.String("mount", dev.MountPoint),
-					zap.String("vid", dev.VendorID),
-					zap.String("pid", dev.ProductID),
+					zap.String("vid", dev.IdVendor),
+					zap.String("pid", dev.IdProduct),
+					zap.String("product", dev.Product),
 					zap.String("type", dev.DeviceType),
 				)
 

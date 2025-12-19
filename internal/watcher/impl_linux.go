@@ -84,10 +84,12 @@ func (w *linuxWatcher) handleAdd(uevent netlink.UEvent) {
 	vid := readFile(filepath.Join(usbRoot, "idVendor"))
 	pid := readFile(filepath.Join(usbRoot, "idProduct"))
 	serial := readFile(filepath.Join(usbRoot, "serial"))
+	product := readFile(filepath.Join(usbRoot, "product"))
 	sysutil.LogSugar.Info("device information:",
 		zap.String("vid", vid),
 		zap.String("pid", pid),
-		zap.String("serial", serial))
+		zap.String("serial", serial),
+		zap.String("product", product))
 
 	// BadUSB 分析
 	isBad, devType := analysis.CheckBadUSB(usbRoot)
@@ -102,8 +104,8 @@ func (w *linuxWatcher) handleAdd(uevent netlink.UEvent) {
 		Action:     "add",
 		DevicePath: devName,
 		MountPoint: mountPoint,
-		VendorID:   vid,
-		ProductID:  pid,
+		IdVendor:   vid,
+		IdProduct:  pid,
 		Serial:     serial,
 		DeviceType: devType,
 		TimeStamp:  time.Now(),
@@ -186,6 +188,7 @@ func (w *linuxWatcher) scanExistingUSB() {
 			vid := readFile(filepath.Join(usbRoot, "idVendor"))
 			pid := readFile(filepath.Join(usbRoot, "idProduct"))
 			serial := readFile(filepath.Join(usbRoot, "serial"))
+			product := readFile(filepath.Join(usbRoot, "product"))
 			isBad, devType := analysis.CheckBadUSB(usbRoot)
 			sysutil.Log.Info("🔍 Found existing USB device during scan",
 				zap.String("mount", mountPoint),
@@ -195,8 +198,9 @@ func (w *linuxWatcher) scanExistingUSB() {
 				Action:     "add",
 				DevicePath: devPath,
 				MountPoint: mountPoint,
-				VendorID:   vid,
-				ProductID:  pid,
+				IdVendor:   vid,
+				IdProduct:  pid,
+				Product:    product,
 				Serial:     serial,
 				DeviceType: devType,
 				TimeStamp:  time.Now(),
