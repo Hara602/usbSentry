@@ -7,8 +7,9 @@ type USBEvent struct {
 	Action     string // "add", "remove"
 	DevicePath string // e.g., /dev/sdb1
 	MountPoint string // e.g., /media/usb
-	VendorID   string
-	ProductID  string
+	IdVendor   string
+	IdProduct  string
+	Product    string
 	Serial     string
 	DeviceType string // "udisk", "badusb_suspect"
 	TimeStamp  time.Time
