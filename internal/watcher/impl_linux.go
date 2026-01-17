@@ -2,12 +2,14 @@ package watcher
 
 import (
 	"bufio"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Hara602/usbSentry/internal/analysis"
+	"github.com/Hara602/usbSentry/internal/blackwhitelist"
 	"github.com/Hara602/usbSentry/internal/model"
 	"github.com/Hara602/usbSentry/internal/sysutil"
 	"github.com/pilebones/go-udev/netlink"
@@ -72,6 +74,8 @@ func (w *linuxWatcher) Stop() {
 func (w *linuxWatcher) handleAdd(uevent netlink.UEvent) {
 	// 获取基础信息
 	// UEvent Env 示例: DEVNAME=/dev/sdb1, DEVPATH=/devices/...
+	// fmt.Println("uevent.Env", uevent.Env)
+
 	devName := uevent.Env["DEVNAME"]
 	if !strings.HasPrefix(devName, "/dev") {
 		devName = "/dev/" + devName
@@ -85,7 +89,7 @@ func (w *linuxWatcher) handleAdd(uevent netlink.UEvent) {
 	pid := readFile(filepath.Join(usbRoot, "idProduct"))
 	serial := readFile(filepath.Join(usbRoot, "serial"))
 	product := readFile(filepath.Join(usbRoot, "product"))
-	sysutil.LogSugar.Info("device information:",
+	sysutil.Log.Info("device information:",
 		zap.String("vid", vid),
 		zap.String("pid", pid),
 		zap.String("serial", serial),
@@ -154,7 +158,7 @@ func (w *linuxWatcher) scanExistingUSB() {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		// sysutil.LogSugar.Infof("/proc/mounts line:%v", line)
+
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
@@ -163,7 +167,6 @@ func (w *linuxWatcher) scanExistingUSB() {
 		devPath := fields[0]
 		// e.g. /media/usb
 		mountPoint := fields[1]
-		// sysutil.LogSugar.Infof("devPath:%v mountPoint:%v", devPath, mountPoint)
 
 		// 只关心 /dev/ 开头的设备，且不是 loop 设备
 		if !strings.HasPrefix(devPath, "/dev/") || strings.HasPrefix(devPath, "/dev/loop") {
@@ -214,6 +217,41 @@ func (w *linuxWatcher) scanExistingUSB() {
 }
 
 func (w *linuxWatcher) handleUdevEvent(uevent netlink.UEvent) {
+	// 获取设备的信息，裁定是否阻断设备的连接
+	if uevent.Env["SUBSYSTEM"] == "usb" && uevent.Env["DEVTYPE"] == "usb_device" {
+		if uevent.Action == "add" {
+			// fmt.Println("usb_device uevent.Env:", uevent.Env)
+
+			devPath := uevent.Env["DEVPATH"]
+			usbRoot := filepath.Join("/sys", devPath)
+			busID := filepath.Base(devPath)
+			vid := readFile(filepath.Join(usbRoot, "idVendor"))
+			pid := readFile(filepath.Join(usbRoot, "idProduct"))
+			serial := readFile(filepath.Join(usbRoot, "serial"))
+			sysutil.Log.Info("checking device information:",
+				zap.String("vid", vid),
+				zap.String("pid", pid),
+				zap.String("serial", serial),
+				zap.String("busID", busID))
+			shouldBlock, reason := blackwhitelist.IsBlocked(vid, pid, serial)
+			if shouldBlock {
+				sysutil.Log.Warn("🚫 [拦截] 发现黑名单/高危设备! 原因:", zap.String("reason", reason))
+
+				// 执行物理阻断
+				if err := blackwhitelist.BlockDevice(busID); err != nil {
+					log.Printf("❌ 阻断失败: %v", err)
+				} else {
+					log.Println("✅ 设备已成功阻断 (Authorized=0)")
+				}
+
+				// 阻断后直接 return，不要启动后面的文件监控了
+				return
+			}
+
+		}
+	}
+
+	// 放行的usb设备
 	if uevent.Env["SUBSYSTEM"] == "block" && uevent.Env["DEVTYPE"] == "partition" {
 		if uevent.Action == "add" {
 			go w.handleAdd(uevent)

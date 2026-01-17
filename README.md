@@ -21,11 +21,11 @@
 go mod tidy
 
 # 编译二进制文件
-go build -o usbSentry main.go
+go build -o usbSentry ./cmd/agent/main.go
 ```
 2.运行
 ```bash
-sudo ./usb-watcher
+sudo ./usbSentry
 ```
 
 3.示例

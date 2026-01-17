@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Hara602/usbSentry/internal/blackwhitelist"
 	"github.com/Hara602/usbSentry/internal/monitor"
 	"github.com/Hara602/usbSentry/internal/sysutil"
 	"github.com/Hara602/usbSentry/internal/watcher"
@@ -15,6 +16,11 @@ func main() {
 	// 初始化日志
 	sysutil.InitLogger()
 	defer sysutil.Log.Sync()
+
+	// 初始化黑白名单数据库
+	if err := blackwhitelist.InitBlackWhiteDB("./internal/db/blacklist.db"); err != nil {
+		sysutil.Log.Fatal("blackwhitelist database init failed!")
+	}
 
 	// Fanotify 需要 Root 权限
 	if os.Geteuid() != 0 {
