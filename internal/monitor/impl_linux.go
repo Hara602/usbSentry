@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hara602/usbSentry/internal/analysis"
 	"github.com/Hara602/usbSentry/internal/model"
 	"github.com/Hara602/usbSentry/internal/sysutil"
 	"golang.org/x/sys/unix"
@@ -23,6 +24,9 @@ type fanotifyMonitor struct {
 	events chan model.FileEvent
 	stop   chan struct{}
 }
+
+var typeInspector = analysis.NewTypeInspector()
+var mountPoint string
 
 func newMonitor() (FileMonitor, error) {
 	flags := uint(unix.FAN_CLASS_NOTIF |
@@ -75,10 +79,7 @@ func (f *fanotifyMonitor) Start() {
 }
 
 func (f *fanotifyMonitor) AddWatch(mountPath string) error {
-	// FAN_MARK_MOUNT: 监控整个挂载点，这是监控 U 盘最高效的方式
-	// mask := uint64(unix.FAN_CLOSE_WRITE |
-	// 	unix.FAN_ONDIR |
-	// 	unix.FAN_EVENT_ON_CHILD)
+	mountPoint = mountPath
 
 	mask := uint64(unix.FAN_CLOSE_WRITE |
 		unix.FAN_CREATE |
@@ -176,6 +177,25 @@ func (f *fanotifyMonitor) processEvents(buf []byte, fanotifyEventMetadata unix.F
 		if fileName == "" {
 			continue
 		}
+
+		if eventOp == "CLOSE_WRITE" {
+
+			filePath := filepath.Join(mountPoint, fileName)
+			result, err := typeInspector.Inspect(filePath)
+			if err != nil {
+				sysutil.LogSugar.Infof("filetype inspect failed:%s, err:%v", filePath, err)
+			}
+			if result.IsMasquerade {
+				sysutil.LogSugar.Warnf("find masquerade file![%s]%s", result.RiskLevel, filePath)
+				sysutil.LogSugar.Warnf("detailed:%s", result.Message)
+				if result.RiskLevel == "HIGH" {
+					os.Rename(filePath, filePath+".quarantine") // 隔离
+				}
+			} else {
+				sysutil.LogSugar.Infof("✅ safe file: %s (Type: %s)", filePath, result.RealExt)
+			}
+		}
+
 		f.events <- model.FileEvent{
 			PID:       pid,
 			ProcName:  procName,
